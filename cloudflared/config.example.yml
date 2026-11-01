@@ -1,0 +1,7 @@
+tunnel: <TUNNEL_UUID>
+credentials-file: /path/to/<TUNNEL_UUID>.json
+ingress:
+  - hostname: memory-origin.connexto.com.br
+    path: ^/mcp$
+    service: http://127.0.0.1:49374
+  - service: http_status:404
