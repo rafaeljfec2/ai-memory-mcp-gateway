@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ai-memory-mcp-gateway-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "55270d56f7bd48d2a30ea4b460499f82"
+    }
+  ],
+  "vars": {
+    "OAUTH_ALLOWED_USER_ID": "cd861824-5834-5b24-ac0b-8cc7bdedd89b",
+    "AI_MEMORY_ORIGIN_URL": "https://cohen-circle-primary-gravity.trycloudflare.com/mcp"
+  }
+}
