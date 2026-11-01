@@ -80,6 +80,7 @@ const providerOptions = {
   },
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/oauth/token",
+  clientRegistrationEndpoint: "/oauth/register",
   scopesSupported: ["mcp:read"],
   requiredScopes: ["mcp:read"],
   resourceMetadata: {
@@ -110,21 +111,40 @@ async function createS256Challenge(verifier: string): Promise<string> {
 }
 
 describe("OAuth provider PKCE exchange", () => {
-  it("rejects a wrong verifier and exchanges a valid S256 verifier", async () => {
+  it("registers a client and exchanges a valid S256 authorization code", async () => {
     const environment = createEnvironment();
     const provider = new OAuthProvider<OAuthTestEnvironment>(providerOptions);
     const helpers = getOAuthApi(providerOptions, environment);
-    const client = await helpers.createClient({
-      clientName: "PKCE integration test",
-      redirectUris: [callback],
-      grantTypes: ["authorization_code", "refresh_token"],
-      responseTypes: ["code"],
-      tokenEndpointAuthMethod: "none",
-    });
+    const registration = await provider.fetch(
+      new Request("https://memory.connexto.com.br/oauth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_name: "PKCE integration test",
+          redirect_uris: [callback],
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          token_endpoint_auth_method: "none",
+        }),
+      }),
+      environment,
+      authContext,
+    );
+    expect(registration.status).toBe(201);
+    const registrationPayload: unknown = await registration.json();
+    if (
+      typeof registrationPayload !== "object" ||
+      registrationPayload === null ||
+      !("client_id" in registrationPayload) ||
+      typeof registrationPayload.client_id !== "string"
+    ) {
+      throw new Error("Dynamic client registration omitted client_id");
+    }
+    const clientId = registrationPayload.client_id;
 
     const verifier = "v".repeat(43);
     const challenge = await createS256Challenge(verifier);
-    const exchange = { provider, environment, helpers, clientId: client.clientId, challenge };
+    const exchange = { provider, environment, helpers, clientId, challenge };
 
     const rejected = await exchangeCode({ ...exchange, verifier: "x".repeat(43) });
     expect(rejected.status).toBe(400);

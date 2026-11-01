@@ -4,10 +4,8 @@ import {
   type ConsentDescription,
 } from "@cloudflare/workers-oauth-provider";
 
-const chatGptCallbackOrigin = "https://chatgpt.com";
 const baseContentSecurityPolicy =
   "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
-const consentContentSecurityPolicy = `default-src 'none'; form-action 'self' ${chatGptCallbackOrigin}; base-uri 'none'; frame-ancestors 'none'`;
 
 export function renderConsentPage(details: ConsentDescription, handle: string): string {
   const readScope = "mcp:read";
@@ -35,11 +33,11 @@ export function renderConsentPage(details: ConsentDescription, handle: string): 
 <p>${clientPublisher}</p>
 <p>Authorization will be returned to <strong>${redirectHost}</strong>.</p>
 ${loopbackWarning}
-<p>Access is limited to read-only tools for the current project.</p>
+<p>Read access follows the configured AI Memory credential, including its project grants and session-ownership rules. This connection cannot write, manage handoffs or messages, or access administration.</p>
 <form method="post" action="/authorize">
 <input type="hidden" name="handle" value="${escapedHandle}">
-<label><input type="checkbox" name="scope" value="${readScope}" checked> Read current-project memory</label>
-<p><button type="submit" name="decision" value="approve">Allow read-only access</button></p>
+<label><input type="checkbox" name="scope" value="${readScope}" checked> Read authorized AI Memory data</label>
+<p><button type="submit" name="decision" value="approve">Allow read access</button></p>
 </form>
 <form method="post" action="/authorize">
 <input type="hidden" name="handle" value="${escapedHandle}">
@@ -54,8 +52,8 @@ export function securityHeaders(headers?: HeadersInit): Headers {
   return createSecurityHeaders(headers, baseContentSecurityPolicy);
 }
 
-export function consentPageHeaders(headers?: HeadersInit): Headers {
-  return createSecurityHeaders(headers, consentContentSecurityPolicy);
+export function consentPageHeaders(headers: HeadersInit | undefined, redirectUri: string): Headers {
+  return createSecurityHeaders(headers, formActionPolicy(redirectUri));
 }
 
 function createSecurityHeaders(headers: HeadersInit | undefined, policy: string): Headers {
@@ -71,6 +69,14 @@ export function redirectResponse(headers: HeadersInit, redirectTo: string): Resp
   const redirectHeaders = securityHeaders(headers);
   redirectHeaders.set("Location", redirectTo);
   return new Response(null, { status: 302, headers: redirectHeaders });
+}
+
+function formActionPolicy(redirectUri: string): string {
+  const callback = new URL(redirectUri);
+  if (callback.protocol !== "https:" && callback.protocol !== "http:") {
+    throw new Error("OAuth redirect URI must use HTTP or HTTPS");
+  }
+  return `default-src 'none'; form-action 'self' ${callback.origin}; base-uri 'none'; frame-ancestors 'none'`;
 }
 
 export function authorizationErrorResponse(error: unknown): Response | undefined {

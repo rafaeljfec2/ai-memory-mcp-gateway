@@ -74,12 +74,14 @@ const context = {
 describe("Worker entrypoint", () => {
   it("routes the MCP endpoint to the gateway handler", async () => {
     const response = await worker.fetch(
-      new Request("https://memory.connexto.com.br/mcp"),
+      new Request("https://memory.connexto.com.br/mcp", {
+        headers: { Accept: "application/json, text/event-stream" },
+      }),
       env,
       context,
     );
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
   });
 
   it("rejects MCP requests whose token is bound to another identity", async () => {

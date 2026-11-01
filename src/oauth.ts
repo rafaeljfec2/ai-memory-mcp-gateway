@@ -84,14 +84,14 @@ async function renderConsent(
 
   const details = await oauth.describeConsent(authRequest);
   if (!requestsOnlyReadScope(details)) {
-    return new Response("Only current-project read access is supported", {
+    return new Response("Only the mcp:read scope is supported", {
       status: 400,
       headers: securityHeaders(),
     });
   }
 
   const consent = await oauth.beginConsent(authRequest);
-  const headers = consentPageHeaders(consent.headers);
+  const headers = consentPageHeaders(consent.headers, details.redirectUri);
   headers.set("Content-Type", "text/html; charset=utf-8");
   return new Response(renderConsentPage(details, consent.handle), { headers });
 }

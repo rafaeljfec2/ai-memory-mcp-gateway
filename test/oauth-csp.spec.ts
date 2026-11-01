@@ -10,10 +10,10 @@ import { handleAuthorizeRequest, type OAuthAuthorizationHelpers } from "../src/o
 
 const allowedUserId = "access-user-id";
 const callbackUrl = "https://chatgpt.com/connector_platform_oauth_redirect?code=test-code";
-const consentPolicy =
-  "default-src 'none'; form-action 'self' https://chatgpt.com; base-uri 'none'; frame-ancestors 'none'";
 const responsePolicy =
   "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+const chatGptConsentPolicy =
+  "default-src 'none'; form-action 'self' https://chatgpt.com; base-uri 'none'; frame-ancestors 'none'";
 
 const authRequest = {
   responseType: "code",
@@ -67,7 +67,7 @@ function accessContext(): CloudflareAccessContext {
 }
 
 describe("OAuth consent callback CSP", () => {
-  it("allows the ChatGPT callback only from the consent page", async () => {
+  it("allows the registered callback origin only from the consent page", async () => {
     const helpers = createOAuthHelpers();
     const access = accessContext();
     const getResponse = await handleAuthorizeRequest(
@@ -91,9 +91,61 @@ describe("OAuth consent callback CSP", () => {
       allowedUserId,
     );
 
-    expect(getResponse.headers.get("content-security-policy")).toBe(consentPolicy);
+    expect(getResponse.headers.get("content-security-policy")).toBe(chatGptConsentPolicy);
     expect(postResponse.status).toBe(302);
     expect(postResponse.headers.get("location")).toBe(callbackUrl);
+    expect(postResponse.headers.get("content-security-policy")).toBe(responsePolicy);
+  });
+
+  it("binds consent and redirect CSP to the registered callback origin", async () => {
+    const helpers = createOAuthHelpers();
+    const access = accessContext();
+    const otherRequest = {
+      responseType: "code",
+      clientId: "other-client",
+      redirectUri: "https://client.example/callback",
+      scope: ["mcp:read"],
+      state: "other-state",
+      codeChallenge: "B".repeat(43),
+      codeChallengeMethod: "S256",
+      resource: "https://memory.example.com/mcp",
+      issuer: "https://memory.example.com",
+    } satisfies AuthRequest;
+    const otherHelpers: OAuthAuthorizationHelpers = {
+      ...helpers,
+      parseAuthRequest: async () => otherRequest,
+      describeConsent: async () => ({
+        ...consentDescription,
+        redirectUri: otherRequest.redirectUri,
+      }),
+      completeAuthorization: async () => ({
+        redirectTo: "https://client.example/callback?code=other-test",
+      }),
+    };
+    const getResponse = await handleAuthorizeRequest(
+      new Request("https://memory.example.com/authorize"),
+      access,
+      otherHelpers,
+      allowedUserId,
+    );
+    const postResponse = await handleAuthorizeRequest(
+      new Request("https://memory.example.com/authorize", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          handle: "one-time-test-handle",
+          decision: "approve",
+          scope: "mcp:read",
+        }),
+      }),
+      access,
+      otherHelpers,
+      allowedUserId,
+    );
+
+    const expectedPolicy =
+      "default-src 'none'; form-action 'self' https://client.example; base-uri 'none'; frame-ancestors 'none'";
+    expect(getResponse.headers.get("content-security-policy")).toBe(expectedPolicy);
     expect(postResponse.headers.get("content-security-policy")).toBe(responsePolicy);
   });
 });
