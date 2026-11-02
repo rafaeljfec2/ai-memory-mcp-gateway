@@ -106,12 +106,12 @@ npx wrangler tail --name <worker-name>
 
 ## Common issues
 
-| Symptom | Likely cause and action |
-| --- | --- |
-| `401` from AI Memory | Check the dedicated user key and its read grants. Do not substitute a root key. |
-| `403` during consent | The Cloudflare Access identity is absent or its `user_uuid` differs from `OAUTH_ALLOWED_USER_ID`. |
-| `workspace and project are required` | Pass both names returned by `memory_list_projects` to a project-scoped tool. |
-| Tunnel is inactive | Check the token-file permissions, tunnel UUID in `ExecStart`, DNS route, and systemd logs. |
-| AI Memory logs a disallowed Host header | Set the tunnel's origin Host header to `localhost`. |
-| `/mcp` works but REST calls return 404 | Ensure the tunnel routes all paths for the hostname, including `/api/v1/*`. |
-| Stale tool list in a client | Refresh the MCP connection or client session after a deployment; keep the same URL when only the Worker implementation changes. |
+| Symptom                                 | Likely cause and action                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `401` from AI Memory                    | Check the dedicated user key and its read grants. Do not substitute a root key.                                                 |
+| `403` during consent                    | The Cloudflare Access identity is absent or its `user_uuid` differs from `OAUTH_ALLOWED_USER_ID`.                               |
+| `workspace and project are required`    | Pass both names returned by `memory_list_projects` to a project-scoped tool.                                                    |
+| Tunnel is inactive                      | Check the token-file permissions, tunnel UUID in `ExecStart`, DNS route, and systemd logs.                                      |
+| AI Memory logs a disallowed Host header | Set the tunnel's origin Host header to `localhost`.                                                                             |
+| `/mcp` works but REST calls return 404  | Ensure the tunnel routes all paths for the hostname, including `/api/v1/*`.                                                     |
+| Stale tool list in a client             | Refresh the MCP connection or client session after a deployment; keep the same URL when only the Worker implementation changes. |

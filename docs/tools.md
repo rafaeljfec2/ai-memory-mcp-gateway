@@ -4,15 +4,15 @@ All tools are read-only. The gateway returns the upstream JSON response as MCP
 text content and sanitizes upstream failures. AI Memory determines which data
 the configured user credential may read.
 
-| Tool | Required arguments | Optional arguments | Purpose |
-| --- | --- | --- | --- |
-| `memory_list_projects` | None | `workspace` | List projects visible to the configured credential. |
-| `memory_list_pages` | `workspace`, `project` | None | List pages in a project. |
-| `memory_read_page` | `workspace`, `project`, `path` | None | Read a complete page. `path` is a page path, not a URL. |
-| `memory_search` | `query` | `global`, `workspace`, `project`, `limit` | Search globally or in one project. |
-| `memory_read_briefing` | `workspace`, `project` | None | Read the project's structured briefing. |
-| `memory_list_sessions` | `workspace`, `project` | `include_open`, `limit`, `offset` | List sessions visible to the credential. |
-| `memory_read_session_observations` | `workspace`, `project`, `session_id` | `limit`, `offset`, `order`, `kinds`, `query`, `body_max_chars` | Read one page of authorized session observations. |
+| Tool                               | Required arguments                   | Optional arguments                                             | Purpose                                                 |
+| ---------------------------------- | ------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------- |
+| `memory_list_projects`             | None                                 | `workspace`                                                    | List projects visible to the configured credential.     |
+| `memory_list_pages`                | `workspace`, `project`               | None                                                           | List pages in a project.                                |
+| `memory_read_page`                 | `workspace`, `project`, `path`       | None                                                           | Read a complete page. `path` is a page path, not a URL. |
+| `memory_search`                    | `query`                              | `global`, `workspace`, `project`, `limit`                      | Search globally or in one project.                      |
+| `memory_read_briefing`             | `workspace`, `project`               | None                                                           | Read the project's structured briefing.                 |
+| `memory_list_sessions`             | `workspace`, `project`               | `include_open`, `limit`, `offset`                              | List sessions visible to the credential.                |
+| `memory_read_session_observations` | `workspace`, `project`, `session_id` | `limit`, `offset`, `order`, `kinds`, `query`, `body_max_chars` | Read one page of authorized session observations.       |
 
 ## Scope rules
 
@@ -23,11 +23,11 @@ them.
 Search has two mutually exclusive modes:
 
 ```json
-{"query":"gateway","global":true,"limit":10}
+{ "query": "gateway", "global": true, "limit": 10 }
 ```
 
 ```json
-{"query":"gateway","workspace":"default","project":"ai-memory-mcp-gateway","limit":10}
+{ "query": "gateway", "workspace": "default", "project": "ai-memory-mcp-gateway", "limit": 10 }
 ```
 
 Global search must omit both `workspace` and `project`. Project search requires
@@ -54,12 +54,12 @@ Example first page:
 
 ```json
 {
-  "workspace":"default",
-  "project":"ai-memory-mcp-gateway",
-  "session_id":"00000000-0000-4000-8000-000000000000",
-  "limit":50,
-  "offset":0,
-  "order":"asc"
+  "workspace": "default",
+  "project": "ai-memory-mcp-gateway",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "limit": 50,
+  "offset": 0,
+  "order": "asc"
 }
 ```
 

@@ -95,14 +95,14 @@ authorize other developers.
 
 ## Configuration reference
 
-| Name | Wrangler setting | Secret | Description |
-| --- | --- | --- | --- |
-| `OAUTH_KV` | KV binding | No | Stores OAuth provider state and grants. |
-| `OAUTH_ALLOWED_USER_ID` | `vars` | No | The one allowed Cloudflare Access `user_uuid`. |
-| `AI_MEMORY_ORIGIN_URL` | `vars` | No | HTTPS base URL for the AI Memory origin, ending in `/mcp`. |
-| `AI_MEMORY_BEARER` | Worker secret | Yes | Dedicated native `aim_` AI Memory user key. |
-| `AI_MEMORY_ACCESS_CLIENT_ID` | Worker secret, optional | Yes | Cloudflare Access service-token ID for the origin. |
-| `AI_MEMORY_ACCESS_CLIENT_SECRET` | Worker secret, optional | Yes | Matching Cloudflare Access service-token secret. |
+| Name                             | Wrangler setting        | Secret | Description                                                |
+| -------------------------------- | ----------------------- | ------ | ---------------------------------------------------------- |
+| `OAUTH_KV`                       | KV binding              | No     | Stores OAuth provider state and grants.                    |
+| `OAUTH_ALLOWED_USER_ID`          | `vars`                  | No     | The one allowed Cloudflare Access `user_uuid`.             |
+| `AI_MEMORY_ORIGIN_URL`           | `vars`                  | No     | HTTPS base URL for the AI Memory origin, ending in `/mcp`. |
+| `AI_MEMORY_BEARER`               | Worker secret           | Yes    | Dedicated native `aim_` AI Memory user key.                |
+| `AI_MEMORY_ACCESS_CLIENT_ID`     | Worker secret, optional | Yes    | Cloudflare Access service-token ID for the origin.         |
+| `AI_MEMORY_ACCESS_CLIENT_SECRET` | Worker secret, optional | Yes    | Matching Cloudflare Access service-token secret.           |
 
 The current staging configuration has a dedicated `AI_MEMORY_BEARER` secret.
 The Access service-token pair is optional and must be configured only when an

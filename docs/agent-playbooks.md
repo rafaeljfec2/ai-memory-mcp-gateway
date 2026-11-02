@@ -7,10 +7,10 @@ does not replace explicit user authorization for account mutations.
 
 ## Know which MCP is which
 
-| MCP connection | Endpoint | Use |
-| --- | --- | --- |
+| MCP connection     | Endpoint                         | Use                                                                         |
+| ------------------ | -------------------------------- | --------------------------------------------------------------------------- |
 | Cloudflare API MCP | `https://mcp.cloudflare.com/mcp` | Cloudflare account discovery and administration through the Cloudflare API. |
-| AI Memory Gateway | `https://<worker-host>/mcp` | Read-only project and memory tools exposed by this repository. |
+| AI Memory Gateway  | `https://<worker-host>/mcp`      | Read-only project and memory tools exposed by this repository.              |
 
 They are separate servers with separate OAuth grants. Connecting the Cloudflare
 API MCP does not add AI Memory tools to ChatGPT. Connecting the AI Memory
@@ -171,12 +171,12 @@ Never publish production or change AI Memory code/database.
 
 ## Common agent diagnostics
 
-| Result | Next check |
-| --- | --- |
-| Only one gateway tool appears | Confirm the client is connected to the gateway URL, refresh discovery, and check the deployed Worker version. |
-| `workspace and project are required` | Call `memory_list_projects`, then pass both returned names. |
-| AI Memory returns `401` | Check the dedicated `aim_` key and grants; never switch to a root key. |
-| Consent returns `403` | Check Cloudflare Access identity and exact `OAUTH_ALLOWED_USER_ID` match. |
-| Tunnel shows inactive | Check tunnel UUID, token file permissions, DNS route, service logs, and linger. |
-| REST path returns `404` | Ensure the tunnel routes `/api/v1/*`, not only `/mcp`. |
-| No observations returned | Check session UUID, project scope, pagination, and upstream owner authorization. Do not bypass upstream filtering. |
+| Result                               | Next check                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Only one gateway tool appears        | Confirm the client is connected to the gateway URL, refresh discovery, and check the deployed Worker version.      |
+| `workspace and project are required` | Call `memory_list_projects`, then pass both returned names.                                                        |
+| AI Memory returns `401`              | Check the dedicated `aim_` key and grants; never switch to a root key.                                             |
+| Consent returns `403`                | Check Cloudflare Access identity and exact `OAUTH_ALLOWED_USER_ID` match.                                          |
+| Tunnel shows inactive                | Check tunnel UUID, token file permissions, DNS route, service logs, and linger.                                    |
+| REST path returns `404`              | Ensure the tunnel routes `/api/v1/*`, not only `/mcp`.                                                             |
+| No observations returned             | Check session UUID, project scope, pagination, and upstream owner authorization. Do not bypass upstream filtering. |
