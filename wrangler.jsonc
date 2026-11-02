@@ -12,6 +12,6 @@
   ],
   "vars": {
     "OAUTH_ALLOWED_USER_ID": "cd861824-5834-5b24-ac0b-8cc7bdedd89b",
-    "AI_MEMORY_ORIGIN_URL": "https://cohen-circle-primary-gravity.trycloudflare.com/mcp"
+    "AI_MEMORY_ORIGIN_URL": "https://memory-origin.connexto.com.br/mcp"
   }
 }

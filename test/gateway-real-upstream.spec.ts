@@ -7,11 +7,12 @@ import {
 } from "../src/mcp-gateway.js";
 import { GATEWAY_TOOLS } from "../src/policy.js";
 
-const sessionId = "448f4ba3-f167-4f64-a4a0-001346246e02";
+const sessionId = process.env.AI_MEMORY_TEST_SESSION_ID ?? "";
 const configuredUpstream = process.env.AI_MEMORY_TEST_UPSTREAM;
 const bearer = process.env.AI_MEMORY_TEST_BEARER;
 const localUpstream = parseLocalUpstream(configuredUpstream);
-const integrationConfigured = localUpstream !== undefined && isNativeUserCredential(bearer);
+const integrationConfigured =
+  localUpstream !== undefined && isNativeUserCredential(bearer) && isUuid(sessionId);
 const gatewayEnvironment: GatewayEnvironment = {
   AI_MEMORY_ORIGIN_URL: "https://memory-origin.connexto.com.br/mcp",
   AI_MEMORY_BEARER: bearer ?? "",
@@ -166,6 +167,10 @@ function parseLocalUpstream(value: string | undefined): URL | undefined {
 
 function isNativeUserCredential(value: string | undefined): value is string {
   return typeof value === "string" && /^aim_[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function readText(result: Awaited<ReturnType<Client["callTool"]>>): string {

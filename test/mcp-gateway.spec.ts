@@ -154,7 +154,7 @@ describe("handleMcpRequest", () => {
         name: "memory_read_session_observations",
         arguments: {
           ...scope,
-          session_id: "448f4ba3-f167-4f64-a4a0-001346246e02",
+          session_id: "123e4567-e89b-42d3-a456-426614174000",
           limit: 200,
           offset: 200,
           order: "desc",
@@ -162,7 +162,7 @@ describe("handleMcpRequest", () => {
       });
       const observationsUrl = new URL(upstream.calls[1]?.url ?? "");
       expect(observationsUrl.pathname).toContain(
-        "/sessions/448f4ba3-f167-4f64-a4a0-001346246e02/observations",
+        "/sessions/123e4567-e89b-42d3-a456-426614174000/observations",
       );
       expect(observationsUrl.searchParams.get("limit")).toBe("200");
       expect(observationsUrl.searchParams.get("offset")).toBe("200");
@@ -183,7 +183,7 @@ describe("handleMcpRequest", () => {
       const missingScope = await client.callTool({
         name: "memory_read_session_observations",
         arguments: {
-          session_id: "448f4ba3-f167-4f64-a4a0-001346246e02",
+          session_id: "123e4567-e89b-42d3-a456-426614174000",
           limit: 200,
         },
       });
@@ -208,7 +208,7 @@ describe("handleMcpRequest", () => {
         arguments: {
           workspace: "default",
           project: "demo",
-          session_id: "448f4ba3-f167-4f64-a4a0-001346246e02",
+          session_id: "123e4567-e89b-42d3-a456-426614174000",
           limit: 201,
         },
       });

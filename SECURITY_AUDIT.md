@@ -1,191 +1,91 @@
-# Auditoria final de segurança — AI Memory MCP Gateway
+# Security model and verification
 
-**Data:** 2026-11-01  
-**Escopo:** snapshot local em `/home/rafael/dev-rafael/ai-memory-mcp-gateway` e implementação upstream disponível em `/home/rafael/dev-rafael/ai-memory`.  
-**Modo:** reavaliação após correções locais; sem publicação, DNS, recursos Cloudflare, início de Tunnel, acesso a credenciais ou testes contra produção.
+This document describes the gateway's current security controls and the latest
+available deployment evidence. It is an operational review, not a penetration
+test or a security certification.
 
-## A. Resumo executivo
+## Security controls
 
-**Classificação: REPROVADA para publicação neste estado.**
+- **Single-user OAuth allowlist:** consent requires a Cloudflare Access identity
+  and an exact match against `OAUTH_ALLOWED_USER_ID`. Email is not used as an
+  identity fallback. Protected MCP requests also verify the identity bound to
+  the OAuth token.
+- **Read-only OAuth scope:** the only supported scope is `mcp:read`. The
+  consent handler requires Authorization Code with PKCE S256 and bounds the
+  consent form body.
+- **Tool allowlist:** only the seven tools in `docs/tools.md` are published.
+  `tools/call` rejects unknown and write-capable names before contacting AI
+  Memory.
+- **Read-only upstream access:** `src/upstream-api.ts` constructs the REST path
+  locally, uses `GET`, rejects redirects, and sends the configured user
+  credential. It never accepts a client-provided origin URL.
+- **Credential boundary:** `AI_MEMORY_BEARER` must match the native `aim_` user
+  key format. The gateway rejects root-style credentials. AI Memory remains
+  responsible for grants, project access, and session-owner filtering.
+- **Error handling:** upstream response bodies are not forwarded for failed
+  requests; server errors and fetch failures return sanitized messages.
+- **OAuth state:** provider state and grants use the `OAUTH_KV` binding.
 
-Os cinco achados da auditoria anterior foram reavaliados e tratados no código do gateway, sem alteração no AI Memory. A autorização agora é single-user: o consentimento exige o `user_uuid` configurado em `OAUTH_ALLOWED_USER_ID`, e cada request protegido compara essa identidade do token com o subject OAuth. A rota MCP também exige `mcp:read`. O consentimento exige challenge PKCE S256 explícito, e o provider continua validando o verifier no token exchange. O form OAuth é limitado a 4096 bytes durante a leitura em streaming.
+## Staging evidence
 
-Para evitar mutações indiretas, o gateway deixou de expor `memory_query`, `memory_recent`, `memory_read_page` e `memory_briefing`, que fazem reinforcement persistente no upstream. O `memory_lint` permanece apenas com `dry_run:true` e `no_llm:true`; não houve mudança na implementação upstream.
+The following checks were recorded for the maintained staging deployment:
 
-Isso não autoriza publicação. `OAUTH_ALLOWED_USER_ID` permanece vazio no Wrangler e o gateway falha fechado até que o operador configure o UUID autorizado. A política real do Cloudflare Access, os secrets/grants upstream, o Worker, KV, Tunnel e DNS não foram consultados; o gateway não foi executado em workerd nem conectado ao ChatGPT. A chave `aim_...` não foi lida nem impressa. O diretório segue sem Git metadata, impedindo rastreabilidade e rollback revisável.
+- The Worker dry run and staging deployment completed successfully.
+- The named Cloudflare Tunnel reported healthy with four active connections.
+- The origin DNS name resolved. Unauthenticated requests to the origin and
+  Worker returned `401`, as expected for protected APIs.
+- The user confirmed a successful ChatGPT `memory_list_projects` call that
+  returned 44 projects. This is direct user-provided evidence from the ChatGPT
+  client.
+- The user systemd tunnel service is enabled, and user linger is enabled.
+- An end-to-end reboot test has not been performed.
 
-**Decisão:** manter bloqueados Tunnel e publicação. As correções locais reduzem os achados técnicos, mas o UUID Access real, o grant de privilégio mínimo, a configuração de Cloudflare, o baseline Git e os testes de staging ainda precisam ser comprovados antes de exposição.
+The last previously recorded local test run reported 35 passing tests and one
+skipped live-upstream integration test. Typecheck, lint, format check, and
+Wrangler dry run also passed in that implementation phase. Documentation edits
+have not been validated by running the test suite again.
 
-### Limites da evidência
+## Deployment-specific notes
 
-- O gateway não contém `.git`; `git rev-parse --show-toplevel` falhou. Esta auditoria examina o snapshot existente, não um diff.
-- O código da biblioteca `@cloudflare/workers-oauth-provider` 1.2.4 foi inspecionado localmente. Um teste usa o provider real, KV em memória e um shim de `WorkerEntrypoint`; isso comprova o exchange S256/verifier da biblioteca, não a execução no runtime Cloudflare.
-- O upstream inspecionado é o código local disponível; não se confirmou que seja exatamente a versão/binário em execução.
-- Não foram consultados Cloudflare, DNS, Tunnel, secrets, API key, AI Memory de produção nem ChatGPT.
-- OpenAI documenta OAuth 2.1 para MCP, discovery, resource indicator e PKCE S256. Compatibilidade efetiva com ChatGPT não foi demonstrada por uma conexão real.
+The shared deployment is staging-only. The staging Worker currently has the
+dedicated `AI_MEMORY_BEARER` secret. The optional
+`AI_MEMORY_ACCESS_CLIENT_ID` and `AI_MEMORY_ACCESS_CLIENT_SECRET` pair is not
+configured there; add both only if the origin is protected by a Cloudflare
+Access Service Auth policy. The AI Memory API still requires its dedicated user
+bearer.
 
-## B. Matriz de controles
+`wrangler.jsonc` contains account-specific Worker/KV configuration and a
+single-user OAuth allowlist. Replace those values for a fork. The allowlist
+UUID is an identifier, not an authentication credential, but it is specific to
+the maintainer. Never commit API keys, tunnel tokens, or service-token values.
 
-| Controle                                          | Implementado?                                          | Evidência                                                                                                                                                                                                                                                                                                             | Teste/evidência executada                                                                                                                                                                                | Resultado e risco residual                                                                                                                                                                                             |
-| ------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Access no consentimento e identidade OAuth        | Implementado, configuração pendente                    | Exige `user_uuid` e igualdade com o único `OAUTH_ALLOWED_USER_ID`; cada request MCP compara `ctx.props.userId` e subject do token: [oauth.ts](./src/oauth.ts), [index.ts](./src/index.ts). README documenta o modelo single-user: [README.md](./README.md).                                                           | Testes de ausência/configuração vazia, UUID divergente, fallback por email e sujeito/propriedades divergentes: [oauth.spec.ts](./test/oauth.spec.ts), [index.spec.ts](./test/index.spec.ts).             | Código falha fechado; o valor autorizado permanece placeholder e a política real de Access não foi verificada. Não há impersonação upstream.                                                                           |
-| Authorization Code + PKCE                         | Implementado e testado localmente                      | Consentimento exige resposta code, challenge S256 explícito e digest base64url de 43 caracteres: [oauth.ts](./src/oauth.ts). Provider anuncia S256 e valida verifier no exchange: `node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js`.                                                           | Ausência/plain rejeitados no handler; provider real rejeita verifier incorreto e aceita fluxo S256 válido: [oauth.spec.ts](./test/oauth.spec.ts), [pkce-provider.spec.ts](./test/pkce-provider.spec.ts). | Não há conexão real com ChatGPT; a compatibilidade prática continua NÃO COMPROVADA.                                                                                                                                    |
-| Descoberta OAuth / protected resource             | Configurada no código; runtime não comprovado          | `resourceMetadata`, issuer, scopes e endpoints: [index.ts](./src/index.ts#L23-L37). O provider 1.2.4 gera discovery, revocation endpoint e métodos PKCE em sua implementação.                                                                                                                                         | Não há teste que faça GET aos well-known endpoints reais.                                                                                                                                                | URLs e JSON publicados não foram exercitados; DNS/Worker ainda não publicados.                                                                                                                                         |
-| Redirect URI, `state` e open redirect             | Delegado; cobertura ausente                            | A biblioteca valida URI registrada no authorization/token flow; o consentimento usa helpers do provider e redireciona ao `redirectTo` validado: [oauth.ts](./src/oauth.ts#L63-L75), [oauth.ts](./src/oauth.ts#L115-L129), [oauth.ts](./src/oauth.ts#L201-L220).                                                       | Testes mockam `parseAuthRequest`, `approveConsent` e `completeAuthorization`: [oauth.spec.ts](./test/oauth.spec.ts#L42-L94).                                                                             | Não há integração que prove URI exata, round-trip de `state`, erros OAuth ou resistência a replay. O parser não exige `state` quando o cliente não envia um.                                                           |
-| Token inválido, expirado e audience               | Delegado e inspecionado no provider                    | O código da biblioteca valida bearer, audience e expiração antes de invocar `apiHandler`, preenchendo `ctx.auth`: `node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js`, fluxo de API antes de `apiHandler.handler.fetch`. Resource canônico: [index.ts](./src/index.ts#L31-L37).                  | Nenhum teste com token real; `index.spec.ts` substitui `OAuthProvider` por mock.                                                                                                                         | A implementação instalada contém esses checks, mas não foram exercitados dentro do runtime Worker nem contra KV real.                                                                                                  |
-| Scope em cada operação                            | Implementado                                           | `apiHandler` valida `ctx.auth.scope` e usa `insufficientScope` em todo request MCP: [index.ts](./src/index.ts).                                                                                                                                                                                                       | Requests sem scope e com somente `mcp:write` são rejeitados: [index.spec.ts](./test/index.spec.ts).                                                                                                      | A prova é unitária no handler; comportamento em Worker real permanece pendente.                                                                                                                                        |
-| Lista de ferramentas                              | Implementado                                           | Allowlist fixa e falha fechada se tool requerido faltar: [policy.ts](./src/policy.ts#L3-L41); `tools/list` só retorna allowlist e status sintético: [mcp-gateway.ts](./src/mcp-gateway.ts#L55-L75).                                                                                                                   | Teste de nomes retornados com upstream falso: [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts#L130-L151).                                                                                               | Prova a filtragem do wrapper contra mock, não o schema/versão real do upstream.                                                                                                                                        |
-| Chamada direta de ferramenta                      | Implementado                                           | `tools/call` revalida o nome com `isReadOnlyToolName`, independentemente de `tools/list`: [mcp-gateway.ts](./src/mcp-gateway.ts#L115-L135).                                                                                                                                                                           | Chamada direta a `memory_delete_page` é rejeitada: [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts#L218-L244).                                                                                          | Boa barreira no gateway. O cliente ainda pode chamar qualquer nome, mas a policy rejeita nomes fora da allowlist.                                                                                                      |
-| Isolamento workspace/projeto                      | Implementado no wrapper                                | `scopeToolArguments` sobrescreve workspace/projeto nas três tools expostas que aceitam escopo: [policy.ts](./src/policy.ts).                                                                                                                                                                                          | Teste de tentativa de adulterar workspace/projeto em `memory_lint` e handoff: [policy.spec.ts](./test/policy.spec.ts), [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts).                                | Testes com upstream falso; falta integração com grant real `read` e IDs reais. `memory_read_session_observations` valida sessão no upstream: [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L3918-L3940). |
-| Consultas globais e ferramentas com reinforcement | Não expostas                                           | `memory_query`, `memory_recent`, `memory_read_page` e `memory_briefing` foram retiradas da allowlist; `memory_explore` já era bloqueada.                                                                                                                                                                              | Testes garantem ausência em `tools/list` e rejeição de chamada direta sem request upstream: [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts), [policy.spec.ts](./test/policy.spec.ts).                  | Consultas por páginas/briefing deixam de estar disponíveis. As ferramentas upstream continuam com efeitos se chamadas diretamente fora do gateway.                                                                     |
-| `memory_lint` sem escrita/LLM                     | Implementado no gateway e verificado na fonte upstream | Força `dry_run:true` e `no_llm:true`: [policy.ts](./src/policy.ts). `run_lint` só grava/remove relatório sob `!dry_run`; a detecção local sem LLM não persiste: [lint.rs](../ai-memory/crates/ai-memory-consolidate/src/lint.rs#L174-L329), [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L3047-L3085). | Tentativas de sobrescrever ambos para false são forçadas de volta: [policy.spec.ts](./test/policy.spec.ts), [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts).                                           | Teste usa upstream simulado; fonte local confirma o ramo sem escrita, mas binário/deployment configurado não foi verificado.                                                                                           |
-| Credencial upstream / SSRF                        | Guardas implementadas; credencial não verificada       | URL aceita apenas HTTPS, hostname/porta/path fixos; redirects são erros: [mcp-gateway.ts](./src/mcp-gateway.ts#L136-L163), validação de origem/secrets: [mcp-gateway.ts](./src/mcp-gateway.ts#L165-L188). Logs só registram operação e nome do erro: [mcp-gateway.ts](./src/mcp-gateway.ts).                          | Teste de env ausente: [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts); auditou-se presença de nomes de variáveis, não valores.                                                                         | Fonte não mostra bearer root hardcoded. Não é comprovado que secret binding contenha a chave `aim_` mencionada ou que pertença a `chatgpt-review`.                                                                     |
-| Separação entre principal OAuth e upstream        | Modelo single-user implementado; configuração pendente | `OAUTH_ALLOWED_USER_ID` limita o consentimento ao UUID Access e o handler MCP compara props e subject do token: [oauth.ts](./src/oauth.ts), [index.ts](./src/index.ts). O bearer upstream continua fixo e nunca é derivado do cliente.                                                                                | Casos de identidade ausente, UUID divergente, email não aceito, props/subject divergentes: [oauth.spec.ts](./test/oauth.spec.ts), [index.spec.ts](./test/index.spec.ts).                                 | Sem configuração do UUID, consentimento retorna 503. Política Access e grant upstream não foram inspecionados; somente um UUID pode ser permitido para evitar compartilhamento cross-user.                             |
-| HTTP/MCP: tamanho/método/content type             | Parcial/delegado ao SDK                                | MCP mantém limite de 64 KiB; consent form valida Content-Type e `Content-Length`, e lê no máximo 4096 bytes em streaming: [mcp-gateway.ts](./src/mcp-gateway.ts), [oauth.ts](./src/oauth.ts). Métodos/Accept e JSON-RPC são delegados ao SDK.                                                                         | Testes cobrem limite normal de 4096 bytes, stream excessivo/cancelamento e conteúdo normal: [oauth.spec.ts](./test/oauth.spec.ts).                                                                       | Payload excessivo não é integralmente bufferizado. Métodos/Accept permanecem delegados e sem matriz negativa abrangente; sem rate limit/timeout upstream explícito.                                                    |
-| Sessões MCP                                       | Stateless no gateway                                   | Cria `WebStandardStreamableHTTPServerTransport` por request com `sessionIdGenerator: undefined`: [mcp-gateway.ts](./src/mcp-gateway.ts#L45-L53).                                                                                                                                                                      | Testes cobrem lifecycle via transport simulado, não isolamento multiusuário real.                                                                                                                        | Não há estado de sessão MCP persistido compartilhado. O provider valida bearer por request antes do handler.                                                                                                           |
-| CORS/origin                                       | Não configurado explicitamente                         | Não há middleware CORS nem allowlist de Origin no Worker; chamadas remotas de servidor não dependem de CORS de browser.                                                                                                                                                                                               | Sem teste CORS/origin.                                                                                                                                                                                   | Risco residual para consumo browser direto; não foi demonstrado como requisito do cliente ChatGPT.                                                                                                                     |
-| Rotas administrativas / web upstream              | Restritas no Worker; Tunnel template                   | `apiRoute` é `/mcp`; outros paths chegam ao handler default que retorna 404 fora de `/authorize`: [index.ts](./src/index.ts#L14-L38), [oauth.ts](./src/oauth.ts#L21-L24). Tunnel template encaminha somente `^/mcp$` e retorna 404 no catch-all: [config.example.yml](./cloudflared/config.example.yml#L1-L7).        | Teste de path alheio no handler; não testa Worker real ou Tunnel: [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts), [oauth.spec.ts](./test/oauth.spec.ts#L196-L220).                                    | `/web`, `/api/v1` e rotas administrativas não são encaminhados pelo template. Configuração real do túnel e acesso à origem não verificados.                                                                            |
-| Build, dependências e rastreabilidade             | Parcial                                                | Versões fixas e lockfile; `workers_dev:false`, placeholder KV, URL pública do upstream apenas como var: [package.json](./package.json#L17-L32), [wrangler.jsonc](./wrangler.jsonc#L1-L16).                                                                                                                            | Testes e comandos listados abaixo; `npm audit --offline` zero vulnerabilidades.                                                                                                                          | Offline audit não comprova advisories atuais. Diretório sem Git impede proveniência, diff e rollback.                                                                                                                  |
+## Public release blocker
 
-### Matriz ferramenta por ferramenta
+A scan of the local Git history found an AI Memory bearer key in a historical
+`.env` blob. The value was not printed. The `.env` path has now been removed
+from all local refs; backup refs and reflogs were pruned, and a scan found no
+matching key pattern in the remaining Git objects. This checkout has no Git
+remote configured and the rewritten history has not been pushed.
 
-As 23 ferramentas abaixo foram enumeradas pelos handlers `#[tool]` em `server.rs`. “Exposta” descreve a política do gateway atual, não uma afirmação de que o upstream de produção tenha exatamente o mesmo conjunto. Tools expostos com argumento de projeto recebem workspace/projeto fixos. Exceções de argumentos estão descritas na última coluna.
+The credential itself has not been revoked or rotated. Treat it as exposed and
+rotate it before public publication. If any earlier clone or backup exists,
+ensure it is not published with the old history. `.gitignore` prevents future
+local secret files from being added but does not clean other clones.
 
-| Ferramenta upstream                                   | Exposta?         | Leitura/escrita observada                                                                                                  | Restrição de projeto no gateway                                                           | Risco / observação                                                                                                              |
-| ----------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `memory_query` (`server.rs:2289`)                     | Não              | Leitura com atualização assíncrona de metadados (`server.rs:2489-2494`).                                                   | Tool removida da allowlist; chamada direta rejeitada.                                     | Pode revelar conteúdo do projeto e altera reinforcement; ambos evitados pela não exposição.                                     |
-| `memory_recent` (`server.rs:2706`)                    | Não              | Leitura com atualização de metadados (`server.rs:2742-2745`).                                                              | Tool removida da allowlist; chamada direta rejeitada.                                     | Pode alterar reinforcement; nenhum caminho pelo gateway.                                                                        |
-| `memory_feedback` (`server.rs:2767`)                  | Não              | Escrita em feedback/saliência.                                                                                             | N/A; chamada bloqueada.                                                                   | Protegida por allowlist no `tools/call`.                                                                                        |
-| `memory_forget_sweep` (`server.rs:3008`)              | Não              | Retenção com remoção/arquivamento.                                                                                         | N/A; chamada bloqueada.                                                                   | Operação destrutiva não exposta.                                                                                                |
-| `memory_lint` (`server.rs:3047`)                      | Sim              | Leitura e cálculo; com `dry_run=true` não grava/remove relatório; com `no_llm=true` não consulta LLM.                      | Scope fixo; `dry_run:true`, `no_llm:true` forçados após argumentos do cliente.            | Ramo sem escrita confirmado na fonte upstream local; versão do daemon real não comprovada.                                      |
-| `memory_consolidate` (`server.rs:3117`)               | Não              | Pode chamar LLM e escrever páginas consolidadas.                                                                           | N/A; bloqueada.                                                                           | Evita efeitos de geração e escrita.                                                                                             |
-| `memory_auto_improve` (`server.rs:3196`)              | Não              | Gera/aplica propostas e pode alterar páginas.                                                                              | N/A; bloqueada.                                                                           | Evita mutação automatizada.                                                                                                     |
-| `memory_write_page` (`server.rs:3483`)                | Não              | Cria/atualiza página.                                                                                                      | N/A; bloqueada.                                                                           | Chamada direta não permitida.                                                                                                   |
-| `memory_read_page` (`server.rs:3651`)                 | Não              | Leitura; `include_related` percorre páginas relacionadas e leitura bem-sucedida reforça metadados (`server.rs:3745-3751`). | Tool removida da allowlist; chamada direta rejeitada.                                     | Acesso completo ao corpo e efeito de reinforcement evitados no gateway.                                                         |
-| `memory_read_session_observations` (`server.rs:3853`) | Sim              | Leitura de observações brutas; sem escrita/LLM indicada na implementação.                                                  | Scope fixo; session ID é validado no escopo e por owner upstream (`server.rs:3918-3940`). | Pode retornar prompts e chamadas de tools do owner upstream fixo; o gateway aceita apenas um principal OAuth autorizado.        |
-| `memory_delete_page` (`server.rs:4012`)               | Não              | Exclui página.                                                                                                             | N/A; bloqueada.                                                                           | Operação destrutiva não exposta.                                                                                                |
-| `memory_handoff_begin` (`server.rs:4087`)             | Não              | Cria handoff.                                                                                                              | N/A; bloqueada.                                                                           | Escrita não exposta.                                                                                                            |
-| `memory_handoff_list` (`server.rs:4197`)              | Sim              | Leitura de handoffs; `any_owner=true` exigiria capacidade administrativa.                                                  | Scope fixo e `any_owner:false` forçados.                                                  | Limita ao owner upstream; policy regression tenta sobrescrever escopo/owner amplo.                                              |
-| `memory_handoff_accept` (`server.rs:4258`)            | Não              | Consome/aceita handoff.                                                                                                    | N/A; bloqueada.                                                                           | Mutação/consumo não exposto.                                                                                                    |
-| `memory_handoff_cancel` (`server.rs:4363`)            | Não              | Cancela handoff.                                                                                                           | N/A; bloqueada.                                                                           | Mutação não exposta.                                                                                                            |
-| `memory_message_send` (`server.rs:4444`)              | Não              | Envia mensagem cross-project.                                                                                              | N/A; bloqueada.                                                                           | Side effect entre projetos não exposto.                                                                                         |
-| `memory_message_list` (`server.rs:4521`)              | Não              | Lê mensagens pendentes.                                                                                                    | N/A; bloqueada.                                                                           | Leitura não exposta.                                                                                                            |
-| `memory_message_pop` (`server.rs:4572`)               | Não              | Lê e consome mensagem.                                                                                                     | N/A; bloqueada.                                                                           | Leitura com efeito de consumo não exposta.                                                                                      |
-| `memory_message_cancel` (`server.rs:4634`)            | Não              | Cancela mensagens.                                                                                                         | N/A; bloqueada.                                                                           | Mutação não exposta.                                                                                                            |
-| `memory_status` upstream (`server.rs:4676`)           | Não; substituída | Leitura de status/contagens.                                                                                               | N/A; não chamada pelo synthetic tool.                                                     | O `memory_status` público é sintético e retorna apenas disponibilidade/versão: [mcp-gateway.ts](./src/mcp-gateway.ts#L93-L112). |
-| `memory_briefing` (`server.rs:4718`)                  | Não              | Snapshot de leitura que atualiza metadados das páginas surfacadas (`server.rs:4810-4815`).                                 | Tool removida da allowlist; chamada direta rejeitada.                                     | Snapshot e reinforcement não são acessíveis por este gateway.                                                                   |
-| `memory_explore` (`server.rs:4764`)                   | Não              | Pode enviar conteúdo a LLM; se configurações mudarem, risco de processamento externo; pode reforçar páginas.               | N/A; bloqueada.                                                                           | Não exposta.                                                                                                                    |
-| `memory_install_self_routing` (`server.rs:4880`)      | Não              | Escreve arquivos de instruções/routing/skills.                                                                             | N/A; bloqueada.                                                                           | Escrita no filesystem não exposta.                                                                                              |
+The local AI Memory host is exposed through a named tunnel and remains
+unavailable while the host computer or its network is offline. Cloudflared
+binary updates are not automatic in the current systemd unit.
 
-## C. Achados
+## Residual limitations
 
-### SEC-01 — Identidade OAuth vinculada a um único usuário
+- The OAuth allowlist supports one Cloudflare Access user. Supporting multiple
+  users requires an explicit authorization design change.
+- The real-upstream test is opt-in and requires a loopback AI Memory URL, a
+  dedicated user key, and `AI_MEMORY_TEST_SESSION_ID`. It is not a substitute
+  for AI Memory's own authorization checks.
+- The tunnel and Worker are validated in staging. Production configuration and
+  production deployment are outside this repository's current setup.
+- The full post-reboot startup path has not been exercised.
 
-- **Severidade original:** MEDIUM — **estado:** corrigido no gateway; configuração operacional pendente.
-- **Correção:** O consentimento exige o `user_uuid` configurado em `OAUTH_ALLOWED_USER_ID`, sem fallback por email: [oauth.ts](./src/oauth.ts#L36-L45). Cada request MCP compara o `userId` das propriedades OAuth e o subject autenticado do token com o mesmo UUID: [index.ts](./src/index.ts#L17-L28). O upstream continua usando uma credencial fixa; não há impersonação dinâmica.
-- **Regressão coberta:** Identidade ausente ou não autorizada no consentimento, UUID divergente e props/subject divergentes no request são rejeitados.
-- **Evidência/testes:** [oauth.spec.ts](./test/oauth.spec.ts#L104-L120), [oauth.spec.ts](./test/oauth.spec.ts#L317-L347), [index.spec.ts](./test/index.spec.ts#L85-L113).
-- **Risco residual:** `OAUTH_ALLOWED_USER_ID` permanece vazio no Wrangler e falha fechado até configuração. Ainda é necessário verificar que o UUID configurado corresponde ao usuário esperado e que a política Access protege `/authorize` para o mesmo indivíduo. O grant e owner da credencial upstream não foram verificados.
-
-### SEC-02 — Ferramentas com reinforcement removidas da superfície MCP
-
-- **Severidade original:** MEDIUM — **estado:** corrigido no gateway; AI Memory inalterado.
-- **Evidência upstream:** `memory_query`, `memory_recent`, `memory_read_page` e `memory_briefing` disparam `spawn_access_bump`, persistindo contadores e `page_access`: [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L2489-L2494), [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L2742-L2745), [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L3745-L3751), [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L4810-L4815). `memory_explore` também reforça as páginas surfaced em [server.rs](../ai-memory/crates/ai-memory-mcp/src/server.rs#L4784-L4802), mas não era exposta. Não foi encontrado modo read-only para essas operações.
-- **Correção:** As quatro ferramentas foram removidas da allowlist e chamadas diretas também são rejeitadas: [policy.ts](./src/policy.ts#L1-L58), [mcp-gateway.ts](./src/mcp-gateway.ts#L62-L115). Permanecem `memory_read_session_observations`, `memory_handoff_list` e `memory_lint`; `memory_lint` recebe sempre `dry_run:true` e `no_llm:true`.
-- **Evidência/testes:** [policy.ts](./src/policy.ts), [mcp-gateway.ts](./src/mcp-gateway.ts), [policy.spec.ts](./test/policy.spec.ts), [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts), upstream [lint.rs](../ai-memory/crates/ai-memory-consolidate/src/lint.rs#L174-L329).
-- **Limitação:** Consultas, páginas e briefing deixaram de estar disponíveis neste gateway. As ferramentas upstream continuam com efeitos se chamadas diretamente fora dele. O ramo `dry_run`/`no_llm` foi examinado na fonte local, não no daemon implantado.
-
-### SEC-03 — Enforcement de `mcp:read` por request
-
-- **Severidade original:** LOW — **estado:** corrigido no handler.
-- **Correção:** Antes de processar qualquer request MCP, o handler valida o scope OAuth autenticado e rejeita scope ausente ou insuficiente com `insufficientScope`: [index.ts](./src/index.ts#L17-L28).
-- **Evidência/testes:** [index.spec.ts](./test/index.spec.ts#L115-L131) — teste para scope ausente e token com somente `mcp:write`.
-- **Risco residual:** Handler testado com provider mockado; execução no runtime Cloudflare permanece pendente. O provider 1.2.4 valida o token antes de chamar o handler, mas essa integração não foi testada no Worker real.
-
-### SEC-04 — PKCE S256 obrigatório no endpoint de consentimento
-
-- **Severidade original:** LOW — **estado:** corrigido; provider exercitado localmente.
-- **Correção:** O consentimento só inicia `response_type=code` com challenge S256 explícito e digest base64url de 43 caracteres, inclusive para clientes confidenciais: [oauth.ts](./src/oauth.ts#L74-L105).
-- **Evidência/testes:** [oauth.spec.ts](./test/oauth.spec.ts#L134-L158) — challenge ausente/plain rejeitados; [pkce-provider.spec.ts](./test/pkce-provider.spec.ts#L112-L134) — provider instalado real rejeita verifier incorreto e aceita fluxo S256 válido.
-- **Compatibilidade/risco residual:** A documentação do ChatGPT especifica Authorization Code + PKCE `S256`; conexão real, DCR, callback e metadados publicados continuam não comprovados. O teste usa KV em memória e shim, não runtime Cloudflare.
-
-### SEC-05 — Limite de payload aplicado durante leitura OAuth
-
-- **Severidade original:** LOW — **estado:** corrigido.
-- **Correção:** Form OAuth limitado a 4096 bytes; `Content-Length` malformado/acima do teto é rejeitado antes da leitura. Sem tamanho declarado, a leitura streaming é interrompida ao ultrapassar o limite e o stream é cancelado: [oauth.ts](./src/oauth.ts#L20-L20), [oauth.ts](./src/oauth.ts#L148-L195).
-- **Evidência/testes:** [oauth.spec.ts](./test/oauth.spec.ts#L219-L273) — form dentro do limite, payload excessivo em stream e cancelamento antecipado.
-- **Risco residual:** O teste comprova o comportamento do handler local, não limites de payload/rate limiting do edge Cloudflare. Um chunk individual pode exceder o teto, mas não é acumulado nem decodificado antes do cancelamento.
-
-## D. Lacunas de testes
-
-Os testes locais cobrem policy, handlers OAuth, transporte MCP com upstream falso e uma integração do provider instalado usando KV em memória/shim. Ainda não demonstram interação real com Cloudflare Worker runtime/KV, Access, daemon AI Memory ou ChatGPT. [index.spec.ts](./test/index.spec.ts) mocka o `OAuthProvider`; [pkce-provider.spec.ts](./test/pkce-provider.spec.ts) exercita o provider instalado fora de workerd; [mcp-gateway.spec.ts](./test/mcp-gateway.spec.ts) usa servidor MCP falso.
-
-| #   | Lacuna solicitada                      | Teste ausente e comportamento esperado                                                                                                                                                                                        |
-| --- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Usuário sem autenticação               | Ausência de identidade Access no consentimento é testada; falta testar request MCP sem bearer no provider real e verificar 401/WWW-Authenticate antes de qualquer chamada upstream.                                           |
-| 2   | Token expirado                         | Token vencido deve ser recusado pelo provider real antes de `apiHandler`; não há teste integrado.                                                                                                                             |
-| 3   | Token inválido                         | Token arbitrário/alterado deve ser recusado sem chamar upstream; não há teste integrado.                                                                                                                                      |
-| 4   | Audience incorreta                     | Token emitido para outro resource deve ser recusado pelo provider real; não há teste integrado.                                                                                                                               |
-| 5   | Tool não permitida chamada diretamente | Rejeição direta das tools removidas e de tool de escrita é exercitada com upstream falso; falta varrer cada tool mutável/desconhecida e confirmar ausência de side effects no daemon sandbox.                                 |
-| 6   | Query sem filtro de projeto            | Queries foram retiradas da superfície e sua chamada direta é rejeitada; para tools ainda expostas, testes comprovam substituição do scope do cliente por workspace/projeto fixos. Não há integração com schemas/daemon reais. |
-| 7   | Outro projeto                          | Testes tentam adulterar workspace/projeto nas tools expostas e confirmam os valores fixos; falta validar com grant real `read` e projeto não autorizado.                                                                      |
-| 8   | IDs de páginas/sessões manipulados     | `memory_read_page` não é exposta. Falta teste de gateway com IDs de sessões de outro owner/projeto para `memory_read_session_observations`, comprovando resposta sem vazamento; upstream tem validação local de escopo/owner. |
-| 9   | Ferramenta de escrita                  | Chamada direta a `memory_delete_page` é rejeitada; não há teste individual para todas as ferramentas de escrita/consumo/cancelamento.                                                                                         |
-| 10  | Sobrescrever `dry_run`/`no_llm`        | Testes no helper e MCP wrapper tentam sobrescrever ambos para `false`; fonte upstream local foi inspecionada, mas daemon real não foi chamado.                                                                                |
-| 11  | Identidade de outro usuário            | Identidade Access fora do único UUID permitido e props/subject divergentes são rejeitados em testes; falta fluxo real Access → OAuth → request e verificação de owner/credencial upstream.                                    |
-| 12  | Endpoint interno/admin                 | Handler testa paths alheios e Tunnel template só encaminha `/mcp`; falta executar Worker e Tunnel isolados para provar que `/web`, `/api/v1` e rotas administrativas nunca alcançam a origem.                                 |
-
-Testes OAuth integrados adicionais: discovery real, DCR, state success/error/replay, redirect URI registrada vs. adulterada, resource indicator/audience, code exchange replay/expiração, refresh e revogação efetiva. PKCE S256 (challenge ausente/plain, verifier incorreto e fluxo válido) e limite de formulário normal/excessivo já têm regressões locais, mas não foram exercitados em Cloudflare/ChatGPT. Validar também cookies/CSRF e expiração/uso único do consent handle do provider.
-
-## E. Auditoria HTTP/MCP e exposição de superfície
-
-- O Worker só configura `apiRoute: "/mcp"`; a biblioteca gerencia `/authorize`, `/oauth/token`, `/oauth/register` e well-known discovery. Paths desconhecidos passam ao handler default e retornam 404.
-- O MCP transport limita o corpo a 64 KiB e usa Streamable HTTP com resposta JSON. Aceitação de método, `Content-Type`, `Accept` e JSON-RPC é delegada ao SDK e não tem testes negativos abrangentes.
-- `/authorize` aceita GET/POST, valida form content type e limita o corpo durante leitura streaming a 4096 bytes; rate limiting do edge não foi verificado.
-- Não há rate limiting nem timeout upstream explícito no código. Timeouts máximos da plataforma/SDK não foram medidos.
-- Não há CORS configurado nem validação de `Origin`. O consumidor remoto servidor-a-servidor não requer CORS de browser; isso não foi validado numa integração ChatGPT.
-- SSRF é mitigado pela comparação exata de HTTPS, hostname, porta e path, além de `redirect: "error"`. O Worker não deriva a URL upstream de input do cliente.
-- Não existe proxy genérico para o serviço local; o Tunnel template encaminha somente `^/mcp$` e faz catch-all 404. A configuração efetiva Cloudflare e exposição de `/web`, `/api/v1` ou rotas internas não foi verificada.
-
-## F. Dependências e operação
-
-- Dependências diretas fixadas em [package.json](./package.json#L17-L32), lockfile presente. Inclui `@cloudflare/workers-oauth-provider` 1.2.4, MCP client/server 2.4.0, Wrangler 4.156.0, Vitest 4.1.12 e override Zod 4.6.7.
-- `npm audit --offline`: 0 vulnerabilidades reportadas no cache local. **Não equivale a uma consulta atualizada de advisories online**. Scanner Snyk não estava disponível.
-- Wrangler build é dry-run e `workers_dev:false`; namespace KV é placeholder zero: [wrangler.jsonc](./wrangler.jsonc#L1-L16). O build não comprova que o KV real existe nem que publicação está bloqueada na conta Cloudflare.
-- Nomes dos secrets upstream estão tipados em [mcp-gateway.ts](./src/mcp-gateway.ts#L29-L34); `wrangler.jsonc` não contém os valores e `.dev.vars` está ignorado em [.gitignore](./.gitignore#L1-L6). Não foi lido nenhum valor. Nenhuma evidência confirma o secret binding Cloudflare ou o grant real.
-- O template [config.example.yml](./cloudflared/config.example.yml#L1-L7) tem UUID e caminho de credencial como placeholders, serve local em `127.0.0.1:49374`, aceita somente `/mcp` e retorna 404 no catch-all. Ele não comprova serviço instalado, Access Service Auth, DNS ou hostname ativo.
-- [README.md](./README.md#L6-L9) declara explicitamente que deploy, DNS, recursos, Tunnel e secrets são bloqueados até aprovação separada.
-- **Rastreabilidade:** `git rev-parse --show-toplevel` falha no gateway. Sem Git não há histórico imutável, diff, autoria, tag/release nem rollback testável. O diretório deve ser colocado sob controle de versão e receber baseline/review antes de operação. Não foi criado Git metadata nesta auditoria.
-
-## G. Verificações executadas
-
-Executadas localmente, sem acesso ao serviço de produção:
-
-- `npm test -- --coverage` — PASS: 5 arquivos, 30 testes; cobertura de linhas 87,68% (178/203).
-- `npm run typecheck` — PASS.
-- `npm run lint` — PASS.
-- `npm run format:check` — PASS após formatar somente este relatório; a primeira execução identificou a tabela Markdown fora do padrão.
-- `npm run build` — PASS: `wrangler deploy --dry-run`, bundle 1717,85 KiB / 353,63 KiB gzip; bindings mostrados incluem UUID OAuth vazio; não publicou Worker.
-- A auditoria de dependências mencionada na auditoria anterior foi `npm audit --offline`; não foi reexecutada nesta etapa e seu resultado não prova advisories atuais.
-- Revisão adversarial independente das cinco correções — não encontrou vulnerabilidades adicionais reportáveis; configuração externa e integração real permanecem fora da evidência local.
-- `wrangler dev --local` não foi validado: tentativa anterior falhou porque `workerd` requer GLIBC 2.32+ ausente no host. Nenhum serviço permaneceu em execução.
-- Nenhum teste foi executado contra produção; nenhum `cloudflared` foi iniciado.
-
-## H. Decisão de publicação
-
-1. **É seguro iniciar o Cloudflare Tunnel?** **Não neste momento.** O template limita ingress a `/mcp`, mas origin Access Service Auth e configuração real não foram comprovados; além disso, a publicação permanece bloqueada pelo usuário.
-2. **É seguro criar os recursos Cloudflare?** **Não nesta etapa.** Recursos externos estão fora da autorização atual.
-3. **É seguro publicar o Worker?** **Não.** As cinco correções estão no código local, mas falta configurar o UUID autorizado, confirmar a policy Access e o grant/secret upstream sem revelar valores, validar o Worker em runtime e estabelecer baseline Git revisável/rollback.
-4. **OAuth está pronto para conexão com ChatGPT?** **Compatibilidade de código parcialmente demonstrada; integração real não comprovada.** Consentimento exige PKCE S256 e o provider local valida verifier, mas callback, DCR, discovery publicado, resource indicator e fluxo real com ChatGPT não foram exercitados.
-5. **Segregação por projeto está comprovada?** **Parcialmente.** Testes do wrapper demonstram que argumentos manipulados são substituídos por `default/rafaeljfec2-connexto-aihub`; não há teste com grant/API key upstream ou daemon real. O gateway limita OAuth a um UUID, mas policy Access efetiva ainda é desconhecida.
-6. **Existe condição que impeça publicação?** **Sim.** UUID permanece vazio (fail-closed); Access, secret binding/grant e runtime não foram verificados; faltam testes integrados em staging e baseline Git com rollback. A ausência de workerd compatível no host impede validar o runtime localmente.
-
-## Identificador da sessão AI Memory
-
-Sessão usada para registrar e revisar esta auditoria: `448f4ba3-f167-4f64-a4a0-001346246e02` (`copilot-cli`, workspace `/home/rafael/dev-rafael/connexto-aihub`). Esse ID identifica a sessão de trabalho AI Memory, não uma execução de gateway ou credencial.
-
-## Fontes externas consultadas
-
-- OpenAI Apps SDK, [Authentication](https://developers.openai.com/apps-sdk/build/auth/) — contrato OAuth 2.1 para MCP, discovery, `resource`, DCR/client auth e PKCE S256.
-- OpenAI API, [MCP servers](https://developers.openai.com/api/docs/guides/tools-connectors-mcp) — compatibilidade de transporte MCP remoto na Responses API; não substitui prova de conexão ChatGPT.
-- Cloudflare OAuth Provider 1.2.4 instalado localmente: `dist/oauth-provider.js`, `.d.ts` e `docs/authorization-server.md`, `docs/resource-servers.md`, `docs/consent-page.md`. Consultados sem instalar ou modificar dependências.
+See [architecture](docs/architecture.md), [deployment](docs/deployment.md),
+and [operations](docs/operations.md) for setup details.

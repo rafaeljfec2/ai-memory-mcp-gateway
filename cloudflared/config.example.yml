@@ -1,7 +1,8 @@
-tunnel: <TUNNEL_UUID>
-credentials-file: /path/to/<TUNNEL_UUID>.json
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /home/REPLACE_WITH_LINUX_USER/.config/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
 ingress:
-  - hostname: memory-origin.connexto.com.br
-    path: ^/mcp$
+  - hostname: memory-origin.example.com
     service: http://127.0.0.1:49374
+    originRequest:
+      httpHostHeader: localhost
   - service: http_status:404
