@@ -118,8 +118,10 @@ Access Service Auth policy is enabled for the origin.
   prevents new local secret files from being added, but does not remove values
   already committed. Revoke any credential found in history.
 - This checkout's local history was rewritten to remove an old `.env` blob from
-  all refs. The credential found there has not been rotated; do not publish
-  until it has been revoked and replaced. Any old clone or backup must also be
-  excluded from publication.
+  all refs, and the remaining Git objects were scanned for the old credential
+  pattern. The credential has not been rotated. This checkout had no remote
+  before publication, so publish only the rewritten refs. Do not publish an
+  old clone or backup; rotate the key if any such copy was shared or cannot be
+  trusted.
 - This repository currently has no `LICENSE`. Public visibility alone does not
   grant reuse rights; add a license if reuse or redistribution is intended.

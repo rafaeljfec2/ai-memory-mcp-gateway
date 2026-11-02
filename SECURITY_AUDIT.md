@@ -59,18 +59,19 @@ single-user OAuth allowlist. Replace those values for a fork. The allowlist
 UUID is an identifier, not an authentication credential, but it is specific to
 the maintainer. Never commit API keys, tunnel tokens, or service-token values.
 
-## Public release blocker
+## Historical local credential
 
 A scan of the local Git history found an AI Memory bearer key in a historical
-`.env` blob. The value was not printed. The `.env` path has now been removed
-from all local refs; backup refs and reflogs were pruned, and a scan found no
-matching key pattern in the remaining Git objects. This checkout has no Git
-remote configured and the rewritten history has not been pushed.
+`.env` blob. The value was not printed. The `.env` path has been removed from
+all local refs; backup refs and reflogs were pruned, and a scan found no
+matching key pattern in the remaining Git objects. This checkout had no Git
+remote before publication, so the credential was not sent to a remote from
+this checkout. The public push contains only the rewritten history.
 
-The credential itself has not been revoked or rotated. Treat it as exposed and
-rotate it before public publication. If any earlier clone or backup exists,
-ensure it is not published with the old history. `.gitignore` prevents future
-local secret files from being added but does not clean other clones.
+The credential itself has not been revoked or rotated. Keep it out of every
+published branch, tag, backup, and clone. Rotate it if an old clone or backup
+was shared or cannot be trusted. `.gitignore` prevents future local secret
+files from being added but does not clean other clones.
 
 The local AI Memory host is exposed through a named tunnel and remains
 unavailable while the host computer or its network is offline. Cloudflared
